@@ -52,6 +52,11 @@ export const config = {
   volume: parseNumber(process.env.VOLUME, 100, 1, 200),
   activity: (process.env.ACTIVITY ?? '/play').trim(),
 
+  // Links to private and local addresses (your own network, the machine the
+  // bot runs on) are refused, because anyone in a server can use /play.
+  // Set to true only when every member who can use the bot is trusted.
+  allowPrivateStreams: (process.env.ALLOW_PRIVATE_STREAMS ?? 'false') === 'true',
+
   // Set to false when something else manages this bot's slash commands.
   registerCommands: (process.env.REGISTER_COMMANDS ?? 'true') !== 'false',
   // FFmpeg comes with FadeHost. Elsewhere, install it or point this at it.

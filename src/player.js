@@ -10,6 +10,7 @@ import {
   joinVoiceChannel,
 } from '@discordjs/voice';
 import { config, isHttpUrl } from './config.js';
+import { PlayError, openStream } from './source.js';
 
 /** One player per Discord server: its voice connection, its queue and what is playing. */
 export const players = new Map();
@@ -58,8 +59,9 @@ export function checkFfmpeg() {
 }
 
 /**
- * FFmpeg reads the source and writes Ogg Opus, which @discordjs/voice sends as
- * it is: no Opus encoder in JavaScript, so a stream costs little CPU.
+ * FFmpeg turns the source into Ogg Opus, which @discordjs/voice sends as it
+ * is: no Opus encoder in JavaScript, so a stream costs little CPU. A link
+ * reaches FFmpeg as bytes on stdin (see source.js), never as a URL.
  */
 export function ffmpegArgs(source) {
   const args = ['-hide_banner', '-nostdin', '-loglevel', 'error'];
@@ -73,13 +75,8 @@ export function ffmpegArgs(source) {
       '-map', '[out]',
     );
   } else {
-    // Only web protocols, so a crafted playlist cannot make FFmpeg read local files.
-    args.push(
-      '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5',
-      '-protocol_whitelist', 'http,https,tcp,tls',
-      '-i', source.url,
-      '-vn',
-    );
+    // stdin only: a playlist in the stream cannot make FFmpeg open anything else.
+    args.push('-protocol_whitelist', 'pipe', '-i', 'pipe:0', '-vn');
     if (config.volume !== 100) args.push('-af', `volume=${config.volume / 100}`);
   }
   args.push('-ac', '2', '-ar', '48000', '-c:a', 'libopus', '-b:a', '96k', '-f', 'ogg', 'pipe:1');
@@ -102,6 +99,7 @@ class GuildPlayer {
     this.current = null;
     this.connection = null;
     this.ffmpeg = null;
+    this.download = null;
     this.textChannel = null;
     this.startedAt = 0;
     this.failures = 0;
@@ -266,19 +264,40 @@ class GuildPlayer {
 
   start(track) {
     clearTimeout(this.idleTimer);
-    const ffmpeg = spawn(config.ffmpegPath, ffmpegArgs(track.source), { stdio: ['ignore', 'pipe', 'pipe'] });
+    const fromLink = track.source.type === 'url';
+    const ffmpeg = spawn(config.ffmpegPath, ffmpegArgs(track.source), { stdio: [fromLink ? 'pipe' : 'ignore', 'pipe', 'pipe'] });
     this.ffmpeg = ffmpeg;
+    const download = fromLink ? new AbortController() : null;
+    this.download = download;
+    // What the member is told when it fails: our own words, never FFmpeg's.
+    let problem = 'Check that the link goes straight to an audio file or stream.';
     let stderr = '';
     ffmpeg.stderr.on('data', (chunk) => {
       stderr = (stderr + chunk).slice(-2000);
     });
     ffmpeg.on('error', (err) => console.error(`[music-bot] could not start FFmpeg: ${err.message}`));
     ffmpeg.on('close', (code, signal) => {
+      download?.abort(); // stop downloading the moment nothing reads it
       if (code === 0 || ffmpeg.stoppedOnPurpose) return; // finished, or skip/stop/next track
       const reason = stderr.trim().split('\n').pop() || `FFmpeg exited with ${code ?? signal}`;
       console.error(`[music-bot] ${this.guild.name}: could not play ${track.title}: ${reason}`);
-      if (!track.autoplay) this.say(`Could not play **${track.title}**: ${reason}`);
+      if (!track.autoplay) this.say(`Could not play **${track.title}**. ${problem}`);
     });
+
+    if (fromLink) {
+      ffmpeg.stdin.on('error', () => {}); // FFmpeg stopped before the download did
+      openStream(track.source.url, download.signal)
+        .then((body) => {
+          body.on('error', () => ffmpeg.stdin.destroy());
+          body.pipe(ffmpeg.stdin);
+        })
+        .catch((err) => {
+          if (download.signal.aborted) return;
+          if (err instanceof PlayError) problem = err.message;
+          console.error(`[music-bot] ${this.guild.name}: could not open ${track.title}: ${err.message}`);
+          ffmpeg.stdin.destroy(); // FFmpeg gets no input and exits, which ends the track
+        });
+    }
 
     const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.OggOpus, metadata: track });
     this.current = track;
@@ -295,6 +314,8 @@ class GuildPlayer {
   }
 
   stopFfmpeg() {
+    this.download?.abort();
+    this.download = null;
     const ffmpeg = this.ffmpeg;
     this.ffmpeg = null;
     if (ffmpeg && ffmpeg.exitCode === null) {

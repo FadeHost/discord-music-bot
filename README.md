@@ -2,7 +2,9 @@
 
 A Discord music bot that plays audio links and internet radio in your voice channels. It keeps a queue, skips and pauses, and it can wait in a voice channel and start playing the moment someone joins. It runs on Discord's current voice stack, including the end-to-end encryption (DAVE) Discord has required for voice since March 2026.
 
-It plays direct links to audio files and streams: MP3, OGG, AAC, FLAC, Icecast and Shoutcast radio, HLS. It does not play YouTube or Spotify, because their terms do not allow bots to stream from them.
+It plays direct links to audio files and streams: MP3, OGG, AAC, FLAC, Icecast and Shoutcast radio. It does not play YouTube or Spotify, because their terms do not allow bots to stream from them.
+
+Anyone in your server can hand `/play` a link, so the bot downloads links itself and refuses private and local addresses (your own network, the machine it runs on), redirects included. FFmpeg only ever sees the audio bytes.
 
 ## Setup on FadeHost
 1. Create a bot at https://discord.com/developers/applications: **New Application**, then **Bot**, then **Reset Token**.
@@ -37,6 +39,7 @@ When everyone leaves the channel, the bot pauses and leaves after `IDLE_LEAVE_MI
 | `IDLE_LEAVE_MINUTES` | `5` | Minutes with nothing to play, or nobody listening, before the bot leaves. `0` means it stays. |
 | `VOLUME` | `100` | Playback volume in percent, from 1 to 200. |
 | `ACTIVITY` | `/play` | The bot's "Listening to" status. Leave it empty for none. |
+| `ALLOW_PRIVATE_STREAMS` | `false` | Set to `true` to play links on private addresses, such as an Icecast server at home. Only when you trust everyone who can use the bot. |
 | `REGISTER_COMMANDS` | `true` | Set to `false` if something else manages this bot's slash commands. |
 | `FFMPEG_PATH` | `ffmpeg` | Where FFmpeg is. FadeHost has it built in. |
 | `CONFIG_PATH` | `/data/music-config.json` | Where the `/autoplay` settings are saved. |
