@@ -44,7 +44,7 @@ When everyone leaves the channel, the bot pauses and leaves after `IDLE_LEAVE_MI
 | `FFMPEG_PATH` | `ffmpeg` | Where FFmpeg is. FadeHost has it built in. |
 | `CONFIG_PATH` | `/data/music-config.json` | Where the `/autoplay` settings are saved. |
 
-On FadeHost's free plan, streams have to be on the usual web ports (80, 443, 8080 or 8443). Paid plans reach any port.
+It runs on every FadeHost plan, the free one included. On the free plan it plays one stream at a time, streams have to be on the usual web ports (80, 443, 8080 or 8443), and the bot may move 1 GB a day, in and out together, which covers several hours of music. If it stutters or runs out of traffic, move it to a paid plan from its page in the panel: paid plans reach any port and have no traffic limit.
 
 ## Running it somewhere else
 You need Node.js 22.12 or newer and FFmpeg with libopus. Run `npm install`, set `DISCORD_TOKEN` and `CONFIG_PATH=./data/music-config.json`, then `npm start`.
